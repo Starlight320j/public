@@ -1,129 +1,106 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-import plotly.express as px
+from datetime import datetime
 
-# --- 1. 페이지 기본 설정 ---
+# --- 1. 페이지 설정 ---
 st.set_page_config(
-    page_title="기후변화와 생물다양성",
-    page_icon="🌿",
+    page_title="득근득근 운동일지",
+    page_icon="🏋️‍♂️",
     layout="wide"
 )
 
-# --- 2. 데이터 로드 (모의 데이터 생성) ---
-@st.cache_data
-def load_data():
-    # 1980년부터 2024년까지의 데이터 생성
-    years = np.arange(1980, 2025)
-    n = len(years)
+# --- 2. 데이터 관리 (Session State) ---
+# 앱이 새로고침되어도 데이터가 유지되도록 session_state 사용
+if 'workout_schedule' not in st.session_state:
+    # 예시 데이터 초기화
+    st.session_state.workout_schedule = [
+        {"요일": "월", "부위": "가슴", "운동명": "벤치프레스", "무게(kg)": 60, "세트": 4, "횟수": 10, "완료": False},
+        {"요일": "월", "부위": "삼두", "운동명": "케이블 푸쉬다운", "무게(kg)": 25, "세트": 3, "횟수": 12, "완료": False},
+        {"요일": "화", "부위": "등", "운동명": "데드리프트", "무게(kg)": 80, "세트": 5, "횟수": 5, "완료": False},
+    ]
+
+# --- 3. 사이드바: 운동 추가하기 ---
+st.sidebar.header("➕ 운동 루틴 추가")
+
+days_option = ["월", "화", "수", "목", "금", "토", "일"]
+parts_option = ["가슴", "등", "하체", "어깨", "이두", "삼두", "복근", "유산소"]
+
+with st.sidebar.form("add_form", clear_on_submit=True):
+    col1, col2 = st.columns(2)
+    s_day = col1.selectbox("요일 선택", days_option)
+    s_part = col2.selectbox("타겟 부위", parts_option)
     
-    # 기온: 점차 상승하는 추세 + 랜덤 변동
-    temperature = 14.0 + (years - 1980) * 0.04 + np.random.normal(0, 0.2, n)
+    s_name = st.text_input("운동명 (예: 스쿼트)")
     
-    # 생물다양성 지수: 기온이 오를수록 감소하는 역상관관계 설정
-    bio_index = 100 - (years - 1980) * 0.8 + np.random.normal(0, 2, n)
+    col3, col4, col5 = st.columns(3)
+    s_weight = col3.number_input("무게(kg)", min_value=0, value=20, step=5)
+    s_sets = col4.number_input("세트 수", min_value=1, value=3)
+    s_reps = col5.number_input("횟수", min_value=1, value=10)
     
-    return pd.DataFrame({
-        "Year": years,
-        "Temperature": temperature,
-        "Biodiversity": bio_index
-    })
+    submit_btn = st.form_submit_button("루틴에 추가하기")
+    
+    if submit_btn and s_name:
+        new_workout = {
+            "요일": s_day,
+            "부위": s_part,
+            "운동명": s_name,
+            "무게(kg)": s_weight,
+            "세트": s_sets,
+            "횟수": s_reps,
+            "완료": False
+        }
+        st.session_state.workout_schedule.append(new_workout)
+        st.success(f"{s_day}요일 루틴에 '{s_name}' 추가 완료!")
 
-df = load_data()
+# --- 4. 메인 화면: 내 운동 일정표 ---
+st.title("🏋️‍♂️ 주간 웨이트 트레이닝 일정표")
+st.markdown("이번 주 목표를 확인하고 운동을 기록해보세요!")
 
-# --- 3. 사이드바 (사용자 컨트롤) ---
-st.sidebar.header("🔍 분석 옵션")
-st.sidebar.write("분석할 기간을 선택하세요.")
-year_range = st.sidebar.slider("연도 범위", 1980, 2024, (1990, 2024))
+# 데이터프레임 변환
+df = pd.DataFrame(st.session_state.workout_schedule)
 
-# 데이터 필터링
-filtered_df = df[(df["Year"] >= year_range[0]) & (df["Year"] <= year_range[1])]
+# 탭으로 요일 구분
+tabs = st.tabs(days_option)
 
-# --- 4. 메인 대시보드 레이아웃 ---
-st.title("🌍 기후변화에 따른 생물다양성 위기")
-st.markdown("""
-이 대시보드는 **지구 온난화(기온 상승)**가 **생물다양성 감소**에 미치는 잠재적 영향을 시각화합니다.
-데이터는 시뮬레이션된 예시입니다.
-""")
+for i, day in enumerate(days_option):
+    with tabs[i]:
+        # 해당 요일의 데이터만 필터링
+        day_schedule = df[df["요일"] == day]
+        
+        if day_schedule.empty:
+            st.info(f"{day}요일은 휴식일이거나 등록된 운동이 없습니다. 푹 쉬세요! 🛌")
+        else:
+            st.subheader(f"📅 {day}요일 운동 리스트")
+            
+            # 리스트 형태로 출력 (체크박스 기능 포함)
+            for idx, row in day_schedule.iterrows():
+                # 고유한 키(key) 생성을 위해 인덱스 활용
+                col_check, col_info = st.columns([1, 10])
+                
+                with col_check:
+                    # 실제 데이터베이스 연동이 없으므로 UI상 체크만 가능하게 구현
+                    is_checked = st.checkbox("", key=f"{day}_{idx}")
+                
+                with col_info:
+                    style = "text-decoration: line-through; color: gray;" if is_checked else ""
+                    st.markdown(
+                        f"<div style='{style} font-size:18px;'>"
+                        f"<b>[{row['부위']}] {row['운동명']}</b> | "
+                        f"{row['무게(kg)']}kg X {row['세트']}세트 X {row['횟수']}회"
+                        f"</div>", 
+                        unsafe_allow_html=True
+                    )
 
+# --- 5. 전체 일정 한눈에 보기 (하단) ---
 st.divider()
-
-# KPI 메트릭 (주요 지표 표시)
-col1, col2, col3 = st.columns(3)
-
-start_temp = filtered_df["Temperature"].iloc[0]
-end_temp = filtered_df["Temperature"].iloc[-1]
-temp_change = end_temp - start_temp
-
-start_bio = filtered_df["Biodiversity"].iloc[0]
-end_bio = filtered_df["Biodiversity"].iloc[-1]
-bio_change = end_bio - start_bio
-
-col1.metric("평균 기온 변화", f"{end_temp:.1f} °C", f"{temp_change:+.1f} °C", delta_color="inverse")
-col2.metric("생물다양성 지수", f"{int(end_bio)}", f"{int(bio_change)}", delta_color="normal") # normal은 감소 시 빨간색
-col3.metric("분석 기간", f"{year_range[1] - year_range[0]} 년")
-
-# --- 5. 차트 시각화 (이중 축 그래프) ---
-st.subheader("📈 기온 상승 vs 생물다양성 감소 추이")
-
-# Plotly로 이중 축 차트 생성
-fig = go.Figure()
-
-# 기온 (왼쪽 Y축)
-fig.add_trace(go.Scatter(
-    x=filtered_df["Year"], 
-    y=filtered_df["Temperature"],
-    name="평균 기온 (°C)",
-    line=dict(color="#FF5733", width=3)
-))
-
-# 생물다양성 (오른쪽 Y축)
-fig.add_trace(go.Bar(
-    x=filtered_df["Year"], 
-    y=filtered_df["Biodiversity"],
-    name="생물다양성 지수",
-    yaxis="y2",
-    marker=dict(color="#2E86C1", opacity=0.4)
-))
-
-# 레이아웃 업데이트 (축 설정)
-fig.update_layout(
-    xaxis=dict(title="연도"),
-    yaxis=dict(title="기온 (°C)", titlefont=dict(color="#FF5733"), tickfont=dict(color="#FF5733")),
-    yaxis2=dict(
-        title="생물다양성 지수",
-        titlefont=dict(color="#2E86C1"),
-        tickfont=dict(color="#2E86C1"),
-        overlaying="y",
-        side="right"
-    ),
-    hovermode="x unified",
-    legend=dict(x=0, y=1.1, orientation="h")
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-# --- 6. 상관관계 산점도 ---
-st.subheader("🔗 상관관계 분석")
-col_chart1, col_text1 = st.columns([2, 1])
-
-with col_chart1:
-    fig_corr = px.scatter(
-        filtered_df, 
-        x="Temperature", 
-        y="Biodiversity", 
-        trendline="ols", # 추세선 추가
-        labels={"Temperature": "기온", "Biodiversity": "생물다양성"},
-        color_discrete_sequence=["green"]
-    )
-    st.plotly_chart(fig_corr, use_container_width=True)
-
-with col_text1:
-    st.info("""
-    **해석 가이드:**
-    
-    좌측 그래프의 추세선이 **우하향**한다면, 기온이 높을수록 생물다양성이 낮아진다는 **음의 상관관계**를 의미합니다.
-    
-    이는 서식지 파괴나 환경 스트레스로 인한 종 감소를 시사할 수 있습니다.
-    """)
+with st.expander("📋 전체 루틴 표로 보기 (클릭하여 펼치기)"):
+    if not df.empty:
+        # 보기 좋게 컬럼 순서 정렬
+        display_df = df[["요일", "부위", "운동명", "무게(kg)", "세트", "횟수"]]
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        
+        if st.button("모든 기록 초기화 (주의)"):
+            st.session_state.workout_schedule = []
+            st.rerun()
+    else:
+        st.write("등록된 운동이 없습니다.")
